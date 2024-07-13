@@ -67,8 +67,8 @@ init:
 	ldy #$61
 	jsr write_text
 
-	lda #$0F ; screen on
-	sta $2100
+;	lda #$0F ; screen on
+;	sta $2100
 
 	jsr wait_for_vblank
 
@@ -77,78 +77,93 @@ init:
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 init_regs:
-	lda #$8F ; screen off
-	sta $2100
+	; lda #$8F ; screen off
+	; sta $2100
 
-	stz $2105 ; BG mode 0, 8x8 tiles
-	stz $2106 ; No mosaic
-	stz $2107 ; BG1: 32x32 tilemap at address 0
-	lda #$04
-	sta $210B ; BG1 tiles at byte $8000 / word $4000
-	stz $210D ; BG1HOFS = 0
-	stz $210D
-	lda #$FF
-	sta $210E ; BG1VOFS = -1
-	sta $210E
-	lda #$80
-	sta $2115 ; VMAIN: inc address by 1 after high byte
-	stz $2121 ; Palette addr = 0
-	stz $2122
-	stz $2122 ; palette 0 = black
-	lda #$FF
-	sta $2122
-	sta $2122 ; palette 1 = white
-	lda #$01
-	sta $212C ; enable BG1
-	stz $212D ; disable subscreen
-	stz $212E ; no window masking
-	stz $2130 ; no window force black
-	lda #$30
-	sta $2131 ; no color math
-	stz $2133 ; no hires/interlace/overscan
-	lda #$01
-	sta $4200 ; no NMI/IRQ, joypad autoread enabled
+	; stz $2105 ; BG mode 0, 8x8 tiles
+	; stz $2106 ; No mosaic
+	; stz $2107 ; BG1: 32x32 tilemap at address 0
+	; lda #$04
+	; sta $210B ; BG1 tiles at byte $8000 / word $4000
+	; stz $210D ; BG1HOFS = 0
+	; stz $210D
+	; lda #$FF
+	; sta $210E ; BG1VOFS = -1
+	; sta $210E
+	; lda #$80
+	; sta $2115 ; VMAIN: inc address by 1 after high byte
+	; stz $2121 ; Palette addr = 0
+	; stz $2122
+	; stz $2122 ; palette 0 = black
+	; lda #$FF
+	; sta $2122
+	; sta $2122 ; palette 1 = white
+	; lda #$01
+	; sta $212C ; enable BG1
+	; stz $212D ; disable subscreen
+	; stz $212E ; no window masking
+	; stz $2130 ; no window force black
+	; lda #$30
+	; sta $2131 ; no color math
+	; stz $2133 ; no hires/interlace/overscan
+	; lda #$01
+	; sta $4200 ; no NMI/IRQ, joypad autoread enabled
+
+	; Beeb additions
+	lda $fe36   ; make sure CPU not throttled
+	and #$7f
+	sta $fe36
+
+	lda #$7f    ; disable interrupts
+	sta $fe4e
+
+	lda #$16
+	sta $fe08	; configure 6850 for 8-N-1 and no interrupt
+	lda #$40
+	sta $fe10   ; configure serial ULA for 19,200 baurd RS423
+	rts
+
 	rts
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 init_video_mem:
-	; clear vmem
-	stz $2116
-	stz $2117 ; VADDR = 0
+	; ; clear vmem
+	; stz $2116
+	; stz $2117 ; VADDR = 0
 
-	lda #$09
-	sta $4300 ; DMA0: to ppu, write to 2 registers, no increment
-	lda #$18
-	sta $4301 ; DMA0: Write to PPU 2118/2119 (VMDATA)
-	lda #<zero
-	sta $4302
-	lda #>zero
-	sta $4303
-	lda #^zero
-	sta $4304
-	stz $4305
-	stz $4306 ; 65536 bytes
-	lda #$01
-	sta $420B ; run DMA0
+	; lda #$09
+	; sta $4300 ; DMA0: to ppu, write to 2 registers, no increment
+	; lda #$18
+	; sta $4301 ; DMA0: Write to PPU 2118/2119 (VMDATA)
+	; lda #<zero
+	; sta $4302
+	; lda #>zero
+	; sta $4303
+	; lda #^zero
+	; sta $4304
+	; stz $4305
+	; stz $4306 ; 65536 bytes
+	; lda #$01
+	; sta $420B ; run DMA0
 
-	; copy font to vmem
-	stz $2116
-	lda #$40
-	sta $2117 ; VADDR = $4000 (word address)
-	lda #$01
-	sta $4300 ; DMA0: to ppu, 2 bytes->2 registers, inc by 1
-	lda #<font
-	sta $4302
-	lda #>font
-	sta $4303
-	lda #^font
-	sta $4304
-	stz $4305
-	lda #$08
-	sta $4306 ; 2048 bytes
-	lda #$01
-	sta $420B ; run DMA0
+	; ; copy font to vmem
+	; stz $2116
+	; lda #$40
+	; sta $2117 ; VADDR = $4000 (word address)
+	; lda #$01
+	; sta $4300 ; DMA0: to ppu, 2 bytes->2 registers, inc by 1
+	; lda #<font
+	; sta $4302
+	; lda #>font
+	; sta $4303
+	; lda #^font
+	; sta $4304
+	; stz $4305
+	; lda #$08
+	; sta $4306 ; 2048 bytes
+	; lda #$01
+	; sta $420B ; run DMA0
 	rts
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -168,24 +183,56 @@ init_mem:
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
+serial_outch:
+	pha
+@loop:
+	lda $fe08
+	and #$02
+	beq @loop
+	pla
+	sta $fe09
+; DMB: expose stack pointer to avoid lots of decoder errors
+	phx
+	tsx
+	stx $2000
+	txs
+	plx
+	rts
+
+serial_inch:
+@loop:
+	lda $fe08
+	and #$01
+	beq @loop
+	lda $fe09
+	rts
+
+
 ; 0:x = text (null-terminated).  y = vmem word address
 write_text:
-	sty $2116
+;	sty $2116
 @loop:
 	lda $00,x
 	beq @end
-	sta $2118
-	stz $2119
+;	sta $2118
+;	stz $2119
+	jsr serial_outch
 	inx
 	bra @loop
 @end:
 	rts
 
+write_newline:
+	lda #10
+	jsr serial_outch
+	lda #13
+	jmp serial_outch
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 ; a = val.  y = vmem word address
 write_hex8:
-	sty $2116
+;	sty $2116
 	pha
 	lsr a
 	lsr a
@@ -203,8 +250,9 @@ write_hex8:
 @num:
 	clc
 	adc #'0'
-	sta $2118
-	stz $2119
+;	sta $2118
+;	stz $2119
+	jsr serial_outch
 	rts
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -248,12 +296,12 @@ init_test:
 	jsr write_text
 @end:
 	jmp @end
-	
+
 @ok:
 	inx
 	stx test_num
 
-	; Every N tests, wait for vblank. This is done to ensure that we're only updating the 
+	; Every N tests, wait for vblank. This is done to ensure that we're only updating the
 	; screen during vblank so that the update takes effect.
 	dec vblank_counter
 	bne @after_vblank
@@ -305,7 +353,7 @@ save_results:
 success:
 	jsr wait_for_vblank
 	jsr update_test_num
-	
+
 	ldx #txt_success
 	ldy #$32
 	jsr write_text
@@ -317,7 +365,8 @@ success:
 update_test_num:
 	ldx #test_num
 	ldy #$6E
-	jmp write_hex16
+	jsr write_hex16
+	jmp write_newline
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -330,42 +379,48 @@ fail:
 	ldx #txt_fail
 	ldy #$32
 	jsr write_text
+	jsr write_newline
+
 	ldx #txt_a
 	ldy #$A1
 	jsr write_text
+	ldx #result_a
+	ldy #$A5
+	jsr write_hex16
+	jsr write_newline
+
 	ldx #txt_x
 	ldy #$C1
 	jsr write_text
+	ldx #result_x
+	ldy #$C5
+	jsr write_hex16
+	jsr write_newline
+
 	ldx #txt_y
 	ldy #$E1
 	jsr write_text
+	ldx #result_y
+	ldy #$E5
+	jsr write_hex16
+	jsr write_newline
+
 	ldx #txt_p
 	ldy #$101
-	jsr write_text
-	ldx #txt_s
-	ldy #$121
 	jsr write_text
 
 	lda result_p
 	ldy #$105
 	jsr write_hex8
+	jsr write_newline
 
-	ldx #result_a
-	ldy #$A5
-	jsr write_hex16
-
-	ldx #result_x
-	ldy #$C5
-	jsr write_hex16
-
-	ldx #result_y
-	ldy #$E5
-	jsr write_hex16
-
+	ldx #txt_s
+	ldy #$121
+	jsr write_text
 	ldx #result_s
 	ldy #$125
 	jsr write_hex16
-
+	jsr write_newline
 
 	jsr wait_for_key
 	jsr wait_for_vblank
@@ -394,35 +449,35 @@ fail:
 
 
 wait_for_key:
-	ldx #txt_press
-	ldy #$341
-	jsr write_text
-@wait_press:
-	lda $4212
-	bit #$01
-	bne @wait_press  ; wait for joypad auto-read to finish
-	lda $4218  ; joypad 1 low byte
-	bpl @wait_press
+; 	ldx #txt_press
+; 	ldy #$341
+; 	jsr write_text
+; @wait_press:
+; 	lda $4212
+; 	bit #$01
+; 	bne @wait_press  ; wait for joypad auto-read to finish
+; 	lda $4218  ; joypad 1 low byte
+; 	bpl @wait_press
 
-@wait_release:
-	lda $4212
-	bit #$01
-	bne @wait_release  ; wait for joypad auto-read to finish
-	lda $4218  ; joypad 1 low byte
-	bmi @wait_release
-
+; @wait_release:
+; 	lda $4212
+; 	bit #$01
+; 	bne @wait_release  ; wait for joypad auto-read to finish
+; 	lda $4218  ; joypad 1 low byte
+; 	bmi @wait_release
+; jsr serial_inch
 	rts
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 
 wait_for_vblank:
-@wait1:
-	bit $4210
-	bmi @wait1
-@wait2:
-	bit $4210
-	bpl @wait2
+; @wait1:
+; 	bit $4210
+; 	bmi @wait1
+; @wait2:
+; 	bit $4210
+; 	bpl @wait2
 	rts
 
 
