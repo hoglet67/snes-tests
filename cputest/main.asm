@@ -2,6 +2,10 @@
 .i16
 .a8
 
+uart_ctrl = $fffe08
+uart_stat = $fffe08
+uart_data = $fffe09
+
 .segment "HEADER"
 	.byte "65C816 TEST          "
 .segment "ROMINFO" ; $FFD5
@@ -41,6 +45,30 @@ main:
 	clc
 	xce
 	sei
+	rep #$38 ; 16 bit A and X/Y and D=0
+
+.a16
+; copy test code in bank $FF to an alias of bank $00
+	lda #$7BFF
+	ldx #$8000
+	ldy #$8000
+	mvn #$ff,#$20
+
+; exit boot mode
+	lda $fffe31
+	and #$df
+	sta $fffe31
+
+; copy vectors in bank $FF to an alias of bank $00
+	lda #$00FF
+	ldx #$FF00
+	ldy #$FF00
+	mvn #$ff,#$00
+
+.a8
+
+; continue the original test code
+
 	rep #$18  ; 16 bit X/Y
 	sep #$20  ; 8 bit A
 	ldx #$01EF
@@ -109,20 +137,20 @@ init_regs:
 	; lda #$01
 	; sta $4200 ; no NMI/IRQ, joypad autoread enabled
 
+
 	; Beeb additions
-	lda $fe36   ; make sure CPU not throttled
+	lda $fffe36   ; make sure CPU not throttled
 	and #$7f
-	sta $fe36
+	sta $fffe36
 
 	lda #$7f    ; disable interrupts
-	sta $fe4e
+	sta $fffe4e
+
+	lda #$40    ; configure serial ULA for 19,200 baurd RS423
+	sta $fffe10
 
 	lda #$16
-	sta $fe08	; configure 6850 for 8-N-1 and no interrupt
-	lda #$40
-	sta $fe10   ; configure serial ULA for 19,200 baurd RS423
-	rts
-
+	sta uart_ctrl	; configure 6850 for 8-N-1 and no interrupt
 	rts
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -186,11 +214,11 @@ init_mem:
 serial_outch:
 	pha
 @loop:
-	lda $fe08
+	lda uart_stat
 	and #$02
 	beq @loop
 	pla
-	sta $fe09
+	sta uart_data
 ; DMB: expose stack pointer to avoid lots of decoder errors
 	phx
 	tsx
@@ -201,10 +229,10 @@ serial_outch:
 
 serial_inch:
 @loop:
-	lda $fe08
+	lda uart_stat
 	and #$01
 	beq @loop
-	lda $fe09
+	lda uart_data
 	rts
 
 
